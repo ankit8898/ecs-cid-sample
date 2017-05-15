@@ -6,7 +6,7 @@ import json
 import datetime
 import time
 import logging
-
+import os
 
 
 logging.basicConfig()
@@ -53,11 +53,11 @@ def checkContainerInstanceTaskStatus(Ec2InstanceId):
     logger.debug("Describe instance attributes response %s", ec2Resp)
 
     tmpList = userdataDecoded.split()
-    for token in tmpList:
-        if token.find("ECS_CLUSTER") > -1:
+    #for token in tmpList:
+    #    if token.find("ECS_CLUSTER") > -1:
             # Split and get the cluster name
-            clusterName = token.split('=')[1]
-            logger.info("Cluster name %s",clusterName)
+    clusterName =  os.environ['ECS_CLUSTER'] #token.split('=')[1]
+    logger.info("Cluster name %s",clusterName)
 
     # Get list of container instance IDs from the clusterName
     clusterListResp = ecsClient.list_container_instances(cluster=clusterName)
@@ -131,11 +131,11 @@ def lambda_handler(event, context):
     userdataDecoded = base64.b64decode(userdataEncoded['Value'])
 
     tmpList = userdataDecoded.split()
-    for token in tmpList:
-        if token.find("ECS_CLUSTER") > -1:
-            # Split and get the cluster name
-            clusterName = token.split('=')[1]
-            logger.debug("Cluster name %s",clusterName)
+    #for token in tmpList:
+
+    # Split and get the cluster name
+    clusterName = os.environ['ECS_CLUSTER'] #token.split('=')[1]
+    logger.debug("Cluster name %s",clusterName)
 
     # Get list of container instance IDs from the clusterName
     clusterListResp = ecsClient.list_container_instances(cluster=clusterName)
@@ -181,10 +181,3 @@ def lambda_handler(event, context):
                     logger.info("Completedlifecycle hook action")
                 except Exception, e:
                     print(str(e))
-
-
-
-
-
-
-
