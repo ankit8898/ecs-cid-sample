@@ -134,6 +134,7 @@ def lambda_handler(event, context):
     clusterName = None
     tmpMsgAppend = None
     completeHook = 0
+    topicArnFromSNS = None
 
     logger.info("Lambda received the event %s",event)
     logger.debug("records: %s",event['Records'][0])
@@ -141,6 +142,7 @@ def lambda_handler(event, context):
     logger.debug("Message: %s",message)
     logger.debug("Ec2 Instance Id %s ,%s",Ec2InstanceId, asgGroupName)
     logger.debug("SNS ARN %s",snsArn)
+    logger.debug("SNS Topic ARN %s", TopicArn)
 
     # Describe instance attributes and get the Clustername from userdata section which would have set ECS_CLUSTER name
     #ec2Resp = ec2Client.describe_instance_attribute(InstanceId=Ec2InstanceId, Attribute='userData')
@@ -151,7 +153,10 @@ def lambda_handler(event, context):
     #tmpList = userdataDecoded.split()
     #for token in tmpList:
 
-    collectAllSubscriptions()
+    if TopicArn:        
+        topicArnFromSNS=TopicArn
+    else:
+        collectAllSubscriptions()
     # Split and get the cluster name
     clusterName = os.environ['ECS_CLUSTER']
     logger.debug("Cluster name %s",clusterName)
@@ -177,12 +182,17 @@ def lambda_handler(event, context):
 
             # If tasks are still running...
             if tasksRunning == 1:
-                for key in subscriptions:
-                    if key['Protocol'] == 'lambda' and os.environ['STACK_NAME'] in key['TopicArn']:
-                        logger.info("Endpoint %s AND TopicArn %s and protocol %s ",key['Endpoint'], key['TopicArn'],key['Protocol'])
-                        logger.info("TopicArn matched %s, publishToSNS function...",key['TopicArn'])
-                        msgResponse = publishToSNS(message, key['TopicArn'])
-                        logger.debug("msgResponse %s and time is %s",msgResponse, datetime.datetime)
+                if topicArnFromSNS:
+                    logger.info("Already have ARN, yay! %s",topicArnFromSNS)
+                    msgResponse = publishToSNS(message, topicArnFromSNS)
+                    logger.debug("msgResponse %s and time is %s",msgResponse, datetime.datetime)
+                else:
+                    for key in subscriptions:
+                        if key['Protocol'] == 'lambda' and os.environ['STACK_NAME'] in key['TopicArn']:
+                            logger.info("Endpoint %s AND TopicArn %s and protocol %s ",key['Endpoint'], key['TopicArn'],key['Protocol'])
+                            logger.info("TopicArn matched %s, publishToSNS function...",key['TopicArn'])
+                            msgResponse = publishToSNS(message, key['TopicArn'])
+                            logger.debug("msgResponse %s and time is %s",msgResponse, datetime.datetime)
             # If tasks are NOT running...
             elif tasksRunning == 0:
                 completeHook = 1
