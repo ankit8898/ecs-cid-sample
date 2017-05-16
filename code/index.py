@@ -158,14 +158,19 @@ def lambda_handler(event, context):
 
             # If tasks are still running...
             if tasksRunning == 1:
-                response = snsClient.list_subscriptions()
-                for key in response['Subscriptions']:
-                    logger.info("Endpoint %s AND TopicArn %s and protocol %s ",key['Endpoint'], key['TopicArn'],
-                                                                                  key['Protocol'])
-                    if TopicArn == key['TopicArn'] and key['Protocol'] == 'lambda':
-                        logger.info("TopicArn match, publishToSNS function...")
-                        msgResponse = publishToSNS(message, key['TopicArn'])
-                        logger.debug("msgResponse %s and time is %s",msgResponse, datetime.datetime)
+                topicArnToUse= os.environ['TOPIC_ARN'] 
+                logger.info("Topic Arn being Used %s ", topicArnToUse)
+                msgResponse = publishToSNS(message, topicArnToUse) #key['TopicArn'])
+                logger.debug("msgResponse %s and time is %s",msgResponse, datetime.datetime)
+
+                #response = snsClient.list_subscriptions()
+                # for key in response['Subscriptions']:
+                #     logger.info("Endpoint %s AND TopicArn %s and protocol %s ",key['Endpoint'], key['TopicArn'],
+                #                                                                   key['Protocol'])
+                #     if TopicArn == key['TopicArn'] and key['Protocol'] == 'lambda':
+                #         logger.info("TopicArn match, publishToSNS function...")
+                #         msgResponse = publishToSNS(message, key['TopicArn'])
+                #         logger.debug("msgResponse %s and time is %s",msgResponse, datetime.datetime)
             # If tasks are NOT running...
             elif tasksRunning == 0:
                 completeHook = 1
