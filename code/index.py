@@ -22,6 +22,7 @@ ecsClient = session.client(service_name='ecs')
 asgClient = session.client('autoscaling')
 snsClient = session.client('sns')
 lambdaClient = session.client('lambda')
+subscriptions=[]
 
 
 """Publish SNS message to trigger lambda again.
@@ -47,12 +48,12 @@ def checkContainerInstanceTaskStatus(Ec2InstanceId):
     tmpMsgAppend = None
 
     # Describe instance attributes and get the Clustername from userdata section which would have set ECS_CLUSTER name
-    ec2Resp = ec2Client.describe_instance_attribute(InstanceId=Ec2InstanceId, Attribute='userData')
-    userdataEncoded = ec2Resp['UserData']
-    userdataDecoded = base64.b64decode(userdataEncoded['Value'])
-    logger.debug("Describe instance attributes response %s", ec2Resp)
+    #ec2Resp = ec2Client.describe_instance_attribute(InstanceId=Ec2InstanceId, Attribute='userData')
+    #userdataEncoded = ec2Resp['UserData']
+    #userdataDecoded = base64.b64decode(userdataEncoded['Value'])
+    #logger.debug("Describe instance attributes response %s", ec2Resp)
 
-    tmpList = userdataDecoded.split()
+    #tmpList = userdataDecoded.split()
     #for token in tmpList:
     #    if token.find("ECS_CLUSTER") > -1:
             # Split and get the cluster name
@@ -102,6 +103,23 @@ def checkContainerInstanceTaskStatus(Ec2InstanceId):
         logger.info("NO tasks are on this instance....%s",Ec2InstanceId)
         return 0, tmpMsgAppend
 
+def collectAllSubscriptions():
+    response  = snsClient.list_subscriptions()
+    # Look for tokens else set to NA
+    nextToken = response.get('NextToken','NA')
+    for key in response['Subscriptions']:
+      subscriptions.append(key)
+    # iterate N times to search for
+    count = 0
+    while count < 3:
+        logger.info("Counting %s",count)
+        count += 1
+        if nextToken != 'NA':
+            logger.info("Fetching for token %s and count i %s",nextToken,count)
+            response = snsClient.list_subscriptions(NextToken=nextToken)
+            nextToken = response.get('NextToken','NA')
+            for key in response['Subscriptions']:
+               subscriptions.append(key)
 
 def lambda_handler(event, context):
 
@@ -125,16 +143,17 @@ def lambda_handler(event, context):
     logger.debug("SNS ARN %s",snsArn)
 
     # Describe instance attributes and get the Clustername from userdata section which would have set ECS_CLUSTER name
-    ec2Resp = ec2Client.describe_instance_attribute(InstanceId=Ec2InstanceId, Attribute='userData')
-    logger.debug("Describe instance attributes response %s",ec2Resp)
-    userdataEncoded = ec2Resp['UserData']
-    userdataDecoded = base64.b64decode(userdataEncoded['Value'])
+    #ec2Resp = ec2Client.describe_instance_attribute(InstanceId=Ec2InstanceId, Attribute='userData')
+    #logger.debug("Describe instance attributes response %s",ec2Resp)
+    #userdataEncoded = ec2Resp['UserData']
+    #userdataDecoded = base64.b64decode(userdataEncoded['Value'])
 
-    tmpList = userdataDecoded.split()
+    #tmpList = userdataDecoded.split()
     #for token in tmpList:
 
+    collectAllSubscriptions()
     # Split and get the cluster name
-    clusterName = os.environ['ECS_CLUSTER'] #token.split('=')[1]
+    clusterName = os.environ['ECS_CLUSTER']
     logger.debug("Cluster name %s",clusterName)
 
     # Get list of container instance IDs from the clusterName
@@ -158,19 +177,12 @@ def lambda_handler(event, context):
 
             # If tasks are still running...
             if tasksRunning == 1:
-                topicArnToUse= os.environ['TOPIC_ARN'] 
-                logger.info("Topic Arn being Used %s ", topicArnToUse)
-                msgResponse = publishToSNS(message, topicArnToUse) #key['TopicArn'])
-                logger.debug("msgResponse %s and time is %s",msgResponse, datetime.datetime)
-
-                #response = snsClient.list_subscriptions()
-                # for key in response['Subscriptions']:
-                #     logger.info("Endpoint %s AND TopicArn %s and protocol %s ",key['Endpoint'], key['TopicArn'],
-                #                                                                   key['Protocol'])
-                #     if TopicArn == key['TopicArn'] and key['Protocol'] == 'lambda':
-                #         logger.info("TopicArn match, publishToSNS function...")
-                #         msgResponse = publishToSNS(message, key['TopicArn'])
-                #         logger.debug("msgResponse %s and time is %s",msgResponse, datetime.datetime)
+                for key in subscriptions:
+                    if key['Protocol'] == 'lambda' and os.environ['STACK_NAME'] in key['TopicArn']:
+                        logger.info("Endpoint %s AND TopicArn %s and protocol %s ",key['Endpoint'], key['TopicArn'],key['Protocol'])
+                        logger.info("TopicArn matched %s, publishToSNS function...",key['TopicArn'])
+                        msgResponse = publishToSNS(message, key['TopicArn'])
+                        logger.debug("msgResponse %s and time is %s",msgResponse, datetime.datetime)
             # If tasks are NOT running...
             elif tasksRunning == 0:
                 completeHook = 1
